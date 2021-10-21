@@ -22,6 +22,18 @@ DATA : gt_fieldcat TYPE slis_t_fieldcat_alv,
        gs_fieldcat TYPE slis_fieldcat_alv,
        gs_layout   TYPE slis_layout_alv.
 
+DATA : BEGIN OF gt_ozet OCCURS 0,
+         ogrencino    LIKE zes_s_islem-ogrencino,
+         adisoyadi    LIKE zes_s_islem-adisoyadi,
+         toplamkitap  LIKE zes_s_ozet-toplamkitap,
+         kalankitap   LIKE zes_s_ozet-kalankitap,
+         gecikenkitap LIKE zes_s_ozet-gecikenkitap,
+         teslimkitap  LIKE zes_s_ozet-teslimkitap,
+       END OF gt_ozet.
+DATA: gs_ozet LIKE LINE OF gt_ozet.
+
+
+
 SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME.
 SELECT-OPTIONS : s_ktpno FOR zes_t_islem-kitapno,
                  s_ogrno FOR zes_t_islem-ogrencino.
@@ -83,6 +95,12 @@ ENDFORM.
 FORM user_command USING b_ucomm LIKE sy-ucomm
                         rs_selfield TYPE slis_selfield.
   CASE b_ucomm.
+    WHEN '&OZET'.
+
+      PERFORM f_get_data_ozet.
+      PERFORM f_merge_ozet.
+      PERFORM f_display_ozet.
+
     WHEN '&GNCLLE'.
       DATA sayac TYPE i.
       LOOP AT gt_report INTO gs_report WHERE selkz = 'X'.
@@ -102,6 +120,14 @@ FORM user_command USING b_ucomm LIKE sy-ucomm
       CALL SCREEN 0100 STARTING AT 5 5
                        ENDING AT 70 20.
     WHEN '&TSLMAL'.
+      DATA sayac1 TYPE i.
+      LOOP AT gt_report INTO gs_report WHERE selkz = 'X'.
+        ADD 1 TO sayac1.
+      ENDLOOP.
+
+      IF sayac1 EQ 0.
+        MESSAGE 'Satır seçiniz' TYPE 'E'.
+      ENDIF.
       DATA : lt_islem TYPE TABLE OF zes_t_islem,
              ls_islem TYPE zes_t_islem.
 
@@ -185,6 +211,22 @@ ENDMODULE.
 *& Form F_ISLEM_KAYDET
 *&---------------------------------------------------------------------*
 FORM f_islem_kaydet .
+  DATA kitapsayisi TYPE i.
+  SELECT COUNT(*) FROM zes_t_islem
+                   WHERE ogrencino = @zes_t_islem-ogrencino AND
+                         kitapteslimtarihi IS INITIAL INTO @kitapsayisi.
+
+  READ TABLE gt_ogrenci INTO gs_ogrenci WITH KEY ogrencino =
+  zes_t_islem-ogrencino.
+  IF gs_ogrenci-puan < 26 AND kitapsayisi > 1.
+    MESSAGE 'Bu öğrenci 2 den fazla kitap alamaz' TYPE 'E'.
+  ELSEIF gs_ogrenci-puan > 25 AND gs_ogrenci-puan < 51   AND kitapsayisi
+  > 3.
+    MESSAGE 'Bu öğrenci 4 den fazla kitap alamaz' TYPE 'E'.
+  ELSEIF gs_ogrenci-puan > 50 AND gs_ogrenci-puan < 76   AND kitapsayisi
+  > 5.
+    MESSAGE 'Bu öğrenci 6 den fazla kitap alamaz' TYPE 'E'.
+  ENDIF.
 
   gs_islem-islemno = zes_t_islem-islemno.
   gs_islem-ogrencino = zes_t_islem-ogrencino.
@@ -202,15 +244,20 @@ FORM f_islem_kaydet .
                   a~kitapno,
                   a~kitapadi
                           FROM zes_t_kitap AS a
-                          INNER JOIN  zes_t_yazar AS b ON b~yazarno = a~yazarno
-                          INNER JOIN  zes_t_tur AS c ON c~turno = a~turno
-                          INTO (@gs_report-yazarno, @gs_report-yazaradi, @gs_report-turno, @gs_report-turtanim,
+                          INNER JOIN  zes_t_yazar AS b ON b~yazarno =
+                          a~yazarno
+                          INNER JOIN  zes_t_tur AS c ON c~turno =
+                          a~turno
+                          INTO (@gs_report-yazarno, @gs_report-yazaradi,
+                          @gs_report-turno, @gs_report-turtanim,
                           @gs_report-kitapno, @gs_report-kitapadi)
                           WHERE a~kitapno = @gs_islem-kitapno.
 
-    READ TABLE gt_ogrenci INTO gs_ogrenci WITH KEY ogrencino = gs_islem-ogrencino.
+    READ TABLE gt_ogrenci INTO gs_ogrenci WITH KEY ogrencino =
+    gs_islem-ogrencino.
     IF sy-subrc = 0.
-      CONCATENATE gs_ogrenci-ogrenciadi gs_ogrenci-ogrencisoyadi INTO gs_report-adisoyadi SEPARATED BY space.
+      CONCATENATE gs_ogrenci-ogrenciadi gs_ogrenci-ogrencisoyadi INTO
+      gs_report-adisoyadi SEPARATED BY space.
     ENDIF.
     gs_report-light = 2.
     APPEND gs_report TO gt_report.
@@ -234,12 +281,14 @@ FORM f_get_data .
             WHERE i~kitapno IN s_ktpno
   AND i~ogrencino IN s_ogrno.
 
- PERFORM f_light_kontrol.
+  PERFORM f_light_kontrol.
 
   LOOP AT gt_report INTO gs_report.
-    READ TABLE gt_ogrenci INTO gs_ogrenci WITH KEY ogrencino = gs_report-ogrencino.
+    READ TABLE gt_ogrenci INTO gs_ogrenci WITH KEY ogrencino =
+    gs_report-ogrencino.
     IF sy-subrc = 0.
-      CONCATENATE gs_ogrenci-ogrenciadi gs_ogrenci-ogrencisoyadi INTO gs_report-adisoyadi SEPARATED BY space.
+      CONCATENATE gs_ogrenci-ogrenciadi gs_ogrenci-ogrencisoyadi INTO
+      gs_report-adisoyadi SEPARATED BY space.
       MODIFY gt_report FROM gs_report.
     ENDIF.
   ENDLOOP.
@@ -360,19 +409,28 @@ MODULE user_command_0200 INPUT.
                   a~kitapno,
                   a~kitapadi
                           FROM zes_t_kitap AS a
-                          INNER JOIN  zes_t_yazar AS b ON b~yazarno = a~yazarno
-                          INNER JOIN  zes_t_tur AS c ON c~turno = a~turno
-                          INTO (@gs_report-yazarno, @gs_report-yazaradi, @gs_report-turno, @gs_report-turtanim,
+                          INNER JOIN  zes_t_yazar AS b ON b~yazarno =
+                          a~yazarno
+                          INNER JOIN  zes_t_tur AS c ON c~turno =
+                          a~turno
+                          INTO (@gs_report-yazarno, @gs_report-yazaradi,
+                          @gs_report-turno, @gs_report-turtanim,
                           @gs_report-kitapno, @gs_report-kitapadi)
                           WHERE a~kitapno = @zes_t_islem-kitapno.
 
-      READ TABLE gt_ogrenci INTO gs_ogrenci WITH KEY ogrencino = zes_t_islem-ogrencino.
+      READ TABLE gt_ogrenci INTO gs_ogrenci WITH KEY ogrencino =
+      zes_t_islem-ogrencino.
       IF sy-subrc = 0.
-        CONCATENATE gs_ogrenci-ogrenciadi gs_ogrenci-ogrencisoyadi INTO gs_report-adisoyadi SEPARATED BY space.
+        CONCATENATE gs_ogrenci-ogrenciadi gs_ogrenci-ogrencisoyadi INTO
+        gs_report-adisoyadi SEPARATED BY space.
       ENDIF.
-      MODIFY gt_report FROM gs_report TRANSPORTING ogrencino adisoyadi kitapno kitapadi yazarno yazaradi turno turtanim
-                                                   kitapalimtarihi kitapteslimtarihi WHERE islemno = zes_t_islem-islemno.
-     PERFORM f_light_kontrol.
+      MODIFY gt_report FROM gs_report TRANSPORTING ogrencino adisoyadi
+      kitapno kitapadi yazarno yazaradi turno turtanim
+                                                   kitapalimtarihi
+                                                   kitapteslimtarihi
+                                                   WHERE islemno =
+                                                   zes_t_islem-islemno.
+      PERFORM f_light_kontrol.
       MESSAGE 'Başarı ile güncellendi.' TYPE 'I'.
       LEAVE TO SCREEN 0.
     WHEN '&IPTAL'.
@@ -389,7 +447,7 @@ ENDMODULE.
 *& <--  p2        text
 *&---------------------------------------------------------------------*
 FORM f_light_kontrol .
-  clear : gs_report.
+  CLEAR : gs_report.
   LOOP AT gt_report INTO gs_report.
     IF gs_report-kitapteslimtarihi IS INITIAL.
       IF sy-datum - gs_report-kitapalimtarihi GE 20.
@@ -397,10 +455,141 @@ FORM f_light_kontrol .
         gs_report-color = 'C611'.
       ELSE.
         gs_report-light = 2.
+        gs_report-color = ''.
       ENDIF.
     ELSE.
       gs_report-light = 3.
+      gs_report-color = ''.
     ENDIF.
     MODIFY gt_report FROM gs_report.
   ENDLOOP.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_GET_DATA_OZET
+*&---------------------------------------------------------------------*
+FORM f_get_data_ozet .
+  TYPES :BEGIN OF ty_secim,
+           ogrencino TYPE zes_t_ogrencii-ogrencino,
+           adisoyadi TYPE zes_s_islem-adisoyadi,
+         END OF ty_secim.
+
+  DATA : lt_secim TYPE STANDARD TABLE OF ty_secim,
+         ls_secim TYPE ty_secim.
+
+  CLEAR : gt_ozet[].
+  LOOP AT gt_report INTO gs_report WHERE selkz = 'X'.
+    CLEAR : ls_secim.
+    ls_secim-ogrencino = gs_report-ogrencino.
+    ls_secim-adisoyadi = gs_report-adisoyadi.
+    APPEND ls_secim TO lt_secim.
+  ENDLOOP.
+  IF sy-subrc NE 0.
+    MOVE-CORRESPONDING gt_report[] TO lt_secim[].
+  ENDIF.
+  SORT lt_secim BY ogrencino.
+  DELETE ADJACENT DUPLICATES FROM lt_secim COMPARING ogrencino.
+
+*  LOOP AT lt_secim INTO ls_secim.
+*    CLEAR : gs_ozet.
+*    gs_ozet-ogrencino = ls_secim-ogrencino.
+*    gs_ozet-adisoyadi = ls_secim-adisoyadi.
+**    LOOP AT gt_report INTO gs_report WHERE ogrencino =
+*ls_secim-ogrencino.
+**      ADD 1 TO gs_ozet-toplamkitap.
+**      IF gs_report-light = 1.
+**        ADD 1 TO gs_ozet-gecikenkitap.
+**        ADD 1 TO gs_ozet-kalankitap.
+**      ELSEIF gs_report-light = 2.
+**        ADD 1 TO gs_ozet-kalankitap.
+**      ELSEIF gs_report-light = 3.
+**        ADD 1 TO gs_ozet-teslimkitap.
+**      ENDIF.
+**    ENDLOOP.
+**    APPEND gs_ozet TO gt_ozet.
+**  ENDLOOP.
+  LOOP AT lt_secim INTO ls_secim.
+    CLEAR : gs_ozet.
+    gs_ozet-ogrencino = ls_secim-ogrencino.
+    gs_ozet-adisoyadi = ls_secim-adisoyadi.
+
+    LOOP AT gt_report INTO gs_report WHERE ogrencino =
+    ls_secim-ogrencino.
+      gs_ozet-toplamkitap = 1.
+
+      IF gs_report-light = 1.
+        gs_ozet-gecikenkitap = 1.
+        gs_ozet-kalankitap = 1.
+      ELSEIF gs_report-light = 2.
+        gs_ozet-kalankitap = 1.
+      ELSEIF gs_report-light = 3.
+        gs_ozet-teslimkitap = 1.
+      ENDIF.
+      COLLECT gs_ozet INTO gt_ozet.
+      gs_ozet-teslimkitap = ''.
+      gs_ozet-kalankitap = ''.
+      gs_ozet-gecikenkitap = ''.
+    ENDLOOP.
+  ENDLOOP.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_MERGE_OZET
+*&---------------------------------------------------------------------*
+FORM f_merge_ozet .
+  CLEAR : gs_layout,gt_fieldcat.
+  CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
+    EXPORTING
+      i_program_name     = sy-repid
+      i_internal_tabname = 'GT_OZET'
+      i_inclname         = sy-repid
+    CHANGING
+      ct_fieldcat        = gt_fieldcat.
+
+  LOOP AT gt_fieldcat INTO gs_fieldcat.
+    CASE gs_fieldcat-fieldname.
+      WHEN 'TOPLAMKITAP'.
+        gs_fieldcat-seltext_s =
+        gs_fieldcat-seltext_m =
+        gs_fieldcat-seltext_l =
+        gs_fieldcat-reptext_ddic = 'Toplam Kitap'.
+      WHEN 'KALANKITAP'.
+        gs_fieldcat-seltext_s =
+        gs_fieldcat-seltext_m =
+        gs_fieldcat-seltext_l =
+        gs_fieldcat-reptext_ddic = 'Verilmeyen Kitap'.
+      WHEN 'GECIKENKITAP'.
+        gs_fieldcat-seltext_s =
+        gs_fieldcat-seltext_m =
+        gs_fieldcat-seltext_l =
+        gs_fieldcat-reptext_ddic =
+        'Geciken Kitap'.
+      WHEN 'TESLIMKITAP'.
+        gs_fieldcat-seltext_s =
+        gs_fieldcat-seltext_m =
+        gs_fieldcat-seltext_l =
+         gs_fieldcat-reptext_ddic = 'Teslim Kitap'.
+      WHEN OTHERS.
+    ENDCASE.
+    MODIFY gt_fieldcat FROM gs_fieldcat.
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_DISPLAY_OZET
+*&---------------------------------------------------------------------*
+FORM f_display_ozet .
+
+  gs_layout-window_titlebar = 'Kitap Özet'.
+  gs_layout-colwidth_optimize = abap_true.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program    = sy-repid
+      is_layout             = gs_layout
+      it_fieldcat           = gt_fieldcat
+      i_screen_start_column = 30
+      i_screen_start_line   = 10
+      i_screen_end_column   = 100
+      i_screen_end_line     = 30
+    TABLES
+      t_outtab              = gt_ozet.
 ENDFORM.
